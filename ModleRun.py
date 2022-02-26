@@ -22,7 +22,7 @@ def readfile(path, label):
     y = np.zeros((len(image_dir)), dtype=np.uint8)  # Y存放标签
     for i, file_name in enumerate(image_dir):
         img = cv2.imread(os.path.join(path, file_name))
-        x[i, :, :] = cv2.resize(img, (224, 224))
+        x[i, :, :, :] = cv2.resize(img, (224, 224))
         if label:
             y[i] = int(file_name.split('_')[0])
     if label:
@@ -61,7 +61,7 @@ test_transform = transforms.Compose([
 batch_size = 64
 train_set = ImgDataset.ImgDataset(train_x, train_y, train_transform)
 val_set = ImgDataset.ImgDataset(val_x, val_y, train_transform)
-test_set = ImgDataset.ImgDataset(test_x, test_y)
+test_set = ImgDataset.ImgDataset(test_x, test_y, test_transform)
 train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
@@ -70,20 +70,19 @@ test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
 gpu = torch.device('cuda')
 cpu = torch.device('cpu')
 
-# 训练数据集
-model_name = ConvNeXt.ConvNeXtT()
-model = model_name.to(gpu)  # cuda()表示使用GPU
+# 训练数据集，还记得改文档名字
+model = ConvNeXt.ConvNeXtT().to(gpu)  # cuda()表示使用GPU
 loss = nn.CrossEntropyLoss()  # CE计算Loss
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=1e-8)  # 更新参数方式Adam
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-8)  # 更新参数方式Adam
 num_epch = 20
 
 # 创建txt文本
-txt_path = '/train_txt/' + model_name + time.time()
+txt_path = 'D:/pythonspace/Classification/train_txt/' + 'ConvNext' + str(int(time.time()))
 run_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-file = open(txt_path+'.txt')
+file = open(txt_path + '.txt', 'w')
 file.writelines('运行开始时间：' + str(run_time))
-file.writelines('')
-file.writelines('训练集训练：')
+file.writelines('\r')
+file.writelines('训练集训练：\r')
 
 # 开始10次训练
 for i in range(num_epch):
@@ -120,24 +119,25 @@ for i in range(num_epch):
             val_acc / len(val_x),
             val_loss / len(val_x)
         ))
-        file.writelines('[{:d}/{:d}] {:.2f} sec(s) Train Acc: {:.3f} Loss: {:.3f} | Val Acc: {:.3f} loss: {:.3f}'.format(
-            i + 1,
-            num_epch,
-            time.time() - epch_time,
-            train_acc / len(train_x),
-            train_loss / len(train_x),
-            val_acc / len(val_x),
-            val_loss / len(val_x)
-        ))
+        file.writelines(
+            '[{:d}/{:d}] {:.2f} sec(s) Train Acc: {:.3f} Loss: {:.3f} | Val Acc: {:.3f} loss: {:.3f}\r'.format(
+                i + 1,
+                num_epch,
+                time.time() - epch_time,
+                train_acc / len(train_x),
+                train_loss / len(train_x),
+                val_acc / len(val_x),
+                val_loss / len(val_x)
+            ))
 print("---------------------------第一次训练结束-----------------------------")
 
 train_val_x = np.concatenate((train_x, val_x), axis=0)
 train_val_y = np.concatenate((train_y, val_y), axis=0)
-train_val_set = ImgDataset(train_val_x, train_val_y, train_transform)
+train_val_set = ImgDataset.ImgDataset(train_val_x, train_val_y, train_transform)
 train_val_loader = DataLoader(train_val_set, batch_size=batch_size, shuffle=True)
 
-file.writelines('')
-file.writelines('训练集、验证集一起训练')
+file.writelines('\r')
+file.writelines('训练集、验证集一起训练\r')
 for epoch in range(num_epch):
     epoch_start_time = time.time()
     train_acc = 0.0
@@ -155,12 +155,12 @@ for epoch in range(num_epch):
         train_loss += batch_loss.item()
 
         # 將結果 print 出來
-    print('[%03d/%03d] %2.2f sec(s) Train Acc: %3.6f Loss: %3.6f' % \
+    print('[%d/%d] %2.2f sec(s) Train Acc: %3.6f Loss: %3.6f' % \
           (epoch + 1, num_epch, time.time() - epoch_start_time, \
            train_acc / train_val_set.__len__(), train_loss / train_val_set.__len__()))
-    file.writelines('[%03d/%03d] %2.2f sec(s) Train Acc: %3.6f Loss: %3.6f' % \
-          (epoch + 1, num_epch, time.time() - epoch_start_time, \
-           train_acc / train_val_set.__len__(), train_loss / train_val_set.__len__()))
+    file.writelines('[%03d/%03d] %2.2f sec(s) Train Acc: %3.6f Loss: %3.6f\r' % \
+                    (epoch + 1, num_epch, time.time() - epoch_start_time, \
+                     train_acc / train_val_set.__len__(), train_loss / train_val_set.__len__()))
 
 """-------------------------第二次训练结束------------------------------"""
 
@@ -168,15 +168,14 @@ for epoch in range(num_epch):
 model.eval()  #
 test_pred = 0
 test_acc = 0
-file.writelines('')
-file.writelines('测试集：')
+file.writelines('\r')
+file.writelines('测试集：\r')
 with torch.no_grad():
     for i, data in enumerate(test_loader):
-        test_pred = model(data[0].to(gpu))
+        test_pred = model(data[0].cuda())
         test_acc += np.sum(np.argmax(test_pred.to(cpu).data.numpy(), axis=1) == data[1].numpy())
-    print('测试集准确率：%3.6f'.format(test_acc / test_set.__len__()))
-    file.writelines('测试集准确率：%3.6f'.format(test_acc / test_set.__len__()))
+    print('测试集准确率：%3.6f' % (test_acc / test_set.__len__()))
+    file.writelines('测试集准确率：%3.6f\r' % (test_acc / test_set.__len__()))
 run_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-file.writelines('运行结束时间：' + str(run_time))
-file.writelines('')
+file.write('运行结束时间：' + str(run_time))
 file.close()
