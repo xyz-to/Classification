@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="root@region-11.autodl.com:20857" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="wangwei@10.126.173.87:22" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
       <paths name="root@region-11.autodl.com:20857">
         <serverdata>
           <mappings>
             <mapping deploy="/tmp/pycharm_project_748" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="wangwei@10.126.173.87:22">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/wangwei/wangwei/xyz" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>

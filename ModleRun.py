@@ -71,7 +71,7 @@ gpu = torch.device('cuda')
 cpu = torch.device('cpu')
 
 # 训练数据集，还记得改文档名字
-model = ConvNeXt.ConvNeXtT().to(gpu)  # cuda()表示使用GPU
+model = .to(gpu)  # cuda()表示使用GPU
 loss = nn.CrossEntropyLoss()  # CE计算Loss
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-8)  # 更新参数方式Adam
 num_epch = 20
