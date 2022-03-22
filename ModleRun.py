@@ -7,6 +7,8 @@ import torchvision.transforms as transforms
 import pandas as pd
 from torch.utils.data import DataLoader, Dataset
 import time
+
+from VAN import modle_van
 from tools import ImgDataset
 from numba import cuda
 from ConvNeXt import ConvNeXt
@@ -32,17 +34,13 @@ def readfile(path, label):
 
 
 # 将数据集转成数组
-data_path = 'D:\\pythonspace\\data\\food-11'
-train_x, train_y = readfile(os.path.join(data_path, 'training'), True)
+data_path = 'D:\\pythonspace\\Classification\\data'
+train_x, train_y = readfile(os.path.join(data_path, 'train'), True)
 print("训练集大小：{}".format(len(train_x)))
 val_x, val_y = readfile(os.path.join(data_path, 'validation'), True)
 print("验证集大小：{}".format(len(val_x)))
-test_x = train_x[-100:, :, :, :]
-test_y = train_y[-100:]
-train_x = train_x[:train_x.shape[0] - 100, :, :, :]
-print("训练集大小：{}".format(len(train_x)))
-train_y = train_y[:train_y.shape[0] - 100]
-print("测试集大小：{}".format(len(train_y)))
+test_x, test_y = readfile(os.path.join(data_path, 'test'), True)
+print("测试集大小：{}".format(len(val_x)))
 
 """利用Dataset和Dataloader包装Data"""
 # training 時做 data augmentation
@@ -71,13 +69,13 @@ gpu = torch.device('cuda')
 cpu = torch.device('cpu')
 
 # 训练数据集，还记得改文档名字
-model = .to(gpu)  # cuda()表示使用GPU
+model = modle_van.van_tiny(11).to(gpu)  # cuda()表示使用GPU
 loss = nn.CrossEntropyLoss()  # CE计算Loss
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-8)  # 更新参数方式Adam
 num_epch = 20
 
 # 创建txt文本
-txt_path = 'D:/pythonspace/Classification/train_txt/' + 'ConvNext' + str(int(time.time()))
+txt_path = 'D:/pythonspace/Classification/train_txt/' + 'VAN' + str(int(time.time()))
 run_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 file = open(txt_path + '.txt', 'w')
 file.writelines('运行开始时间：' + str(run_time))

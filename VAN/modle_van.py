@@ -1,9 +1,22 @@
+# -- coding:utf-8 --
 import torch.nn as nn
-from timm.models.layers import DropPath
+import torch
+import torch.nn.functional as F
+
+
+def drop_path(x, drop_prob: float = 0., training: bool = False):
+    if drop_prob == 0. or not training:
+        return x
+    keep_prob = 1 - drop_prob
+    shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
+    random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
+    random_tensor.floor_()  # binarize
+    output = x.div(keep_prob) * random_tensor
+    return output
 
 
 class AttentionModle(nn.Module):
-    """LKA×¢ÒâÁ¦»úÖÆ, ´ò¾í»ıºË³ß´çÎª21"""
+    """LKAæ³¨æ„åŠ›æœºåˆ¶, æ‰“å·ç§¯æ ¸å°ºå¯¸ä¸º21"""
 
     def __init__(self, dim):
         super(AttentionModle, self).__init__()
@@ -11,16 +24,49 @@ class AttentionModle(nn.Module):
         self.conv_spatial = nn.Conv2d(dim, dim, 7, dilation=3, padding=9, groups=dim)
         self.conv_1 = nn.Conv2d(dim, dim, 1)
 
-    def forward(self):
-        u = x.clone()
+    def forward(self, x):
+        u = x
         attn = self.conv_0(x)
         attn = self.conv_spatial(attn)
         attn = self.conv_1(attn)
         return u * attn
 
 
+class LayerNorm(nn.Module):
+
+    def __init__(self, normalized_shape, eps=1e-6, data_format="channels_last"):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(normalized_shape), requires_grad=True)
+        self.bias = nn.Parameter(torch.zeros(normalized_shape), requires_grad=True)
+        self.eps = eps
+        self.data_format = data_format
+        if self.data_format not in ["channels_last", "channels_first"]:
+            raise ValueError(f"not support data format '{self.data_format}'")
+        self.normalized_shape = (normalized_shape,)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.data_format == "channels_last":
+            return F.layer_norm(x, self.normalized_shape, self.weight, self.bias, self.eps)
+        elif self.data_format == "channels_first":
+            # [batch_size, channels, height, width]
+            mean = x.mean(1, keepdim=True)
+            var = (x - mean).pow(2).mean(1, keepdim=True)
+            x = (x - mean) / torch.sqrt(var + self.eps)
+            x = self.weight[:, None, None] * x + self.bias[:, None, None]
+            return x
+
+
+class DropPath(nn.Module):
+    def __init__(self, drop_prob=None):
+        super(DropPath, self).__init__()
+        self.drop_prob = drop_prob
+
+    def forward(self, x):
+        return drop_path(x, self.drop_prob, self.training)
+
+
 class SpatialAttention(nn.Module):
-    """½«LKA¼ÓÉÏÆ¿¾±ºÍ²Ğ²î"""
+    """å°†LKAåŠ ä¸Šç“¶é¢ˆå’Œæ®‹å·®"""
 
     def __init__(self, d_model):
         super(SpatialAttention, self).__init__()
@@ -31,7 +77,7 @@ class SpatialAttention(nn.Module):
         self.conv1 = nn.Conv2d(d_model, d_model, 1)
 
     def forward(self, x):
-        shortcut = x.clone()
+        shortcut = x
         x = self.conv0(x)
         x = self.activation(x)
         x = self.spatial_gating_unit(x)
@@ -41,10 +87,10 @@ class SpatialAttention(nn.Module):
 
 
 class Block(nn.Module):
-    """VANµÄÒ»¸öBLOCK£¬Ã»ÓĞĞ´ÉÏMLP"""
+    """VANçš„ä¸€ä¸ªBLOCKï¼Œæ²¡æœ‰å†™ä¸ŠMLP"""
 
     def __init__(self, dim, drop_rate=0, layer_scale_init_value=1e-2):
-        super(block, self).__init__()
+        super(Block, self).__init__()
         self.norm1 = nn.BatchNorm2d(dim)
         self.attn = SpatialAttention(dim)
         self.drop_path = DropPath(drop_rate) if drop_rate > 0. else nn.Identity()
@@ -55,40 +101,41 @@ class Block(nn.Module):
             layer_scale_init_value * torch.ones(dim), requires_grad=True)
 
     def forward(self, x):
-        shortcut = x.clone()
-        x = self.attn(self.norm1)
+        shortcut = x
+        x = self.attn(self.norm1(x))
         if self.layer_scale_1 is not None:
-            x = self.layer_scale_1 * x
+            x = self.layer_scale_1.unsqueeze(-1).unsqueeze(-1) * x
         x = self.drop_path(x) + shortcut
         return x
 
 
 class VAN(nn.Module):
-    """VANµÄÕûÌå¼Ü¹¹£¬Ã»ÓĞpatch embedding"""
+    """VANçš„æ•´ä½“æ¶æ„ï¼Œæ²¡æœ‰patch embedding"""
 
     def __init__(self, img_size=224, in_chans=3, num_classes=11, drop_rate=0, depths=[3, 3, 5, 2],
                  dims=[32, 64, 160, 5], layer_scale_init_value=1e-2):
         super(VAN, self).__init__()
-        # Ê¹ÓÃmodulelist¸ü¼ÓµÄÄ£¿é»¯
+        # ä½¿ç”¨modulelistæ›´åŠ çš„æ¨¡å—åŒ–
         self.downsample_layers = nn.ModuleList()
-        # ¸ù²ã
+        # æ ¹å±‚
         stem = nn.Sequential(
             nn.Conv2d(in_chans, dims[0], kernel_size=7, stride=4, padding=2),
-            LayerNorm(dims[0], eps=1e-6, data_format="channels_first")
+            LayerNorm(dims[0], eps=1e-6, data_format='channels_first')
         )
         self.downsample_layers.append(stem)
 
-        # ÆäÓàÈı¸öÏÂ²ÉÑù²ã£¬¶¼·ÅÔÚÒ»¸öLISTÀïÃæ
+        # å…¶ä½™ä¸‰ä¸ªä¸‹é‡‡æ ·å±‚ï¼Œéƒ½æ”¾åœ¨ä¸€ä¸ªLISTé‡Œé¢
         for i in range(3):
             downsample_layer = nn.Sequential(
-                nn.LayerNorm(dims[i]),
+                LayerNorm(dims[i], data_format="channels_first"),
                 nn.Conv2d(dims[i], dims[i + 1], kernel_size=3, stride=2)
             )
             self.downsample_layers.append(downsample_layer)
 
-        # ËÄ¸östage²ã£¬Ò²·ÅÔÚÒ»¸öLISTÀïÃæ
+        # å››ä¸ªstageå±‚ï¼Œä¹Ÿæ”¾åœ¨ä¸€ä¸ªLISTé‡Œé¢
         self.stages = nn.ModuleList()
-        dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
+        dp_rates = [x.item() for x in torch.linspace(0, drop_rate, sum(depths))]
+        cur = 0
         for i in range(4):
             stage = nn.Sequential(
                 *[Block(dim=dims[i], drop_rate=dp_rates[cur + j], layer_scale_init_value=layer_scale_init_value)
@@ -96,15 +143,15 @@ class VAN(nn.Module):
             )
             self.stages.append(stage)
             cur += depths[i]
-        self.norm = nn.LayerNorm(dims[-1], eps=1e-6)
+        self.norm = LayerNorm(dims[-1], eps=1e-6, data_format="channels_last")
         self.head = nn.Linear(dims[-1], num_classes)
 
     def forward_features(self, x):
-        """Ò»Ö±¼ÆËã×îºóµÄÊä³öÌØÕ÷Í¼"""
+        """ä¸€ç›´è®¡ç®—æœ€åçš„è¾“å‡ºç‰¹å¾å›¾"""
         for i in range(4):
             x = self.downsample_layers[i](x)
             x = self.stages[i](x)
-        # (N, C, H, W) -> (N, C)È¡Æ½¾ùÖµ
+        # (N, C, H, W) -> (N, C)å–å¹³å‡å€¼
         return self.norm(x.mean([-2, -1]))
 
     def forward(self, x):
