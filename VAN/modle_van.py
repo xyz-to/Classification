@@ -163,6 +163,7 @@ class VAN(nn.Module):
 def van_tiny(num_classes):
     model = VAN(
         depths=[8, 8, 4, 4],
-        dims=[32, 64, 160, 256]
+        dims=[32, 64, 160, 256],
+        drop_rate=0.1
     )
     return model
